@@ -421,7 +421,7 @@ export default {
       this.loadingProducts = true
       this.productError = null
       try {
-        const response = await axios.get('https://mwdev.pesapal.credit/ap/merchant/loans/products', {
+        const response = await axios.get('https://mwdev.pesapal.credit/api/merchant/loans/products', {
           timeout: 10000,
           headers: {
             'Accept': 'application/json',

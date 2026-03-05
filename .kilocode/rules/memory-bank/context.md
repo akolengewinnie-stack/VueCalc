@@ -86,3 +86,4 @@ export async function GET() {
 |------|---------|
 | Initial | Template created with base setup |
 | 2026-03-05 | Added Vue.js loan calculator app in loan-calculator/ directory |
+| 2026-03-05 | Added login page to loan calculator using PesaPal API (https://mwdev.pesapal.credit/api/merchant/login); Login.vue created, App.vue updated with auth state, logout button, and session storage |

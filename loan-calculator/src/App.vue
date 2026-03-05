@@ -163,12 +163,16 @@
             <button
               class="btn btn-primary btn-lg"
               @click="calculateLoan"
-              :disabled="!canCalculate"
+              :disabled="!canCalculate || calculatingSchedule"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+              <svg v-if="calculatingSchedule" class="spinner btn-spinner" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" width="20" height="20">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <svg v-else xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
                 <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/>
               </svg>
-              Calculate Loan
+              {{ calculatingSchedule ? 'Calculating...' : 'Calculate Loan' }}
             </button>
             <button
               v-if="loanBreakdown"
@@ -178,6 +182,13 @@
             >
               Reset
             </button>
+          </div>
+          <!-- Schedule API Error -->
+          <div v-if="scheduleError" class="schedule-error-banner">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+            </svg>
+            {{ scheduleError }}
           </div>
         </div>
       </div>
@@ -365,6 +376,10 @@ export default {
       amountError: null,
       periodError: null,
 
+      // Schedule API state
+      calculatingSchedule: false,
+      scheduleError: null,
+
       // Results
       loanBreakdown: null,
       repaymentSchedule: [],
@@ -465,6 +480,7 @@ export default {
       // Reset results when product changes
       this.loanBreakdown = null
       this.repaymentSchedule = []
+      this.scheduleError = null
     },
 
     validateForm() {
@@ -496,15 +512,115 @@ export default {
       return valid
     },
 
-    calculateLoan() {
+    async calculateLoan() {
       if (!this.validateForm()) return
 
+      this.calculatingSchedule = true
+      this.scheduleError = null
+      this.loanBreakdown = null
+      this.repaymentSchedule = []
+
+      try {
+        const token = sessionStorage.getItem('auth_token')
+        const headers = { 'Accept': 'application/json', 'Content-Type': 'application/json' }
+        if (token && token !== 'session') {
+          headers['Authorization'] = `Bearer ${token}`
+        }
+
+        const payload = {
+          loan_product_id: this.selectedProduct.id,
+          amount: this.loanAmount,
+          duration: this.loanPeriod,
+        }
+
+        const response = await axios.post(
+          'https://mwdev.pesapal.credit/api/merchant/loans/loan_schedule',
+          payload,
+          { timeout: 15000, headers }
+        )
+
+        const data = response.data
+        // Normalise the schedule array — API may return it at different keys
+        const scheduleData = Array.isArray(data)
+          ? data
+          : (data.schedule || data.data || data.repayment_schedule || data.installments || [])
+
+        if (scheduleData.length === 0) {
+          throw new Error('No schedule data returned from the API.')
+        }
+
+        // Build loanBreakdown from API response or derive from schedule
+        const summary = data.summary || data.loan_summary || data
+        const principal = Number(summary.principal || summary.loan_amount || summary.amount || this.loanAmount)
+        const totalRepayment = Number(summary.total_repayment || summary.total_amount || 0) ||
+          scheduleData.reduce((s, r) => s + Number(r.installment_amount || r.installment || r.total || 0), 0)
+        const totalInterest = Number(summary.total_interest || 0) ||
+          scheduleData.reduce((s, r) => s + Number(r.interest || r.interest_amount || 0), 0)
+        const monthlyInstallment = Number(summary.monthly_installment || summary.installment_amount || 0) ||
+          (scheduleData[0] ? Number(scheduleData[0].installment_amount || scheduleData[0].installment || scheduleData[0].total || 0) : 0)
+
+        this.loanBreakdown = {
+          principal: principal || this.loanAmount,
+          duration: this.loanPeriod,
+          interestRate: this.selectedProduct.interest_rate,
+          monthlyInstallment,
+          totalInterest,
+          totalRepayment: totalRepayment || (principal + totalInterest),
+          productName: this.selectedProduct.name,
+        }
+
+        // Map schedule rows to the shape the table expects
+        this.repaymentSchedule = scheduleData.map((row, index) => {
+          const dueDate = row.due_date || row.date || row.payment_date
+            ? new Date(row.due_date || row.date || row.payment_date)
+            : (() => {
+                const d = new Date()
+                d.setDate(1)
+                d.setMonth(d.getMonth() + 1 + index)
+                return d
+              })()
+
+          return {
+            installmentNumber: row.installment_number || row.period || row.month || (index + 1),
+            dueDate,
+            openingBalance: Number(row.opening_balance || row.balance_bf || row.outstanding_balance || 0),
+            principal: Number(row.principal || row.principal_amount || 0),
+            interest: Number(row.interest || row.interest_amount || 0),
+            installmentAmount: Number(row.installment_amount || row.installment || row.total || row.total_payment || 0),
+            closingBalance: Number(row.closing_balance || row.balance_cf || row.balance || 0),
+            isFirst: index === 0,
+            isLast: index === scheduleData.length - 1,
+          }
+        })
+      } catch (error) {
+        console.error('Loan schedule API error:', error)
+        if (error.response) {
+          const status = error.response.status
+          if (status === 401 || status === 403) {
+            this.scheduleError = 'Session expired. Please log out and log in again.'
+          } else if (status === 422) {
+            const msg = error.response.data?.message || error.response.data?.error || 'Invalid loan parameters.'
+            this.scheduleError = `Validation error: ${msg}`
+          } else {
+            this.scheduleError = `Server error (${status}). Please try again.`
+          }
+        } else if (error.code === 'ECONNABORTED') {
+          this.scheduleError = 'Request timed out. Please check your connection and try again.'
+        } else {
+          this.scheduleError = error.message || 'Failed to calculate loan schedule. Please try again.'
+        }
+        // Fall back to local calculation so the user still gets a result
+        this.calculateLoanLocally()
+      } finally {
+        this.calculatingSchedule = false
+      }
+    },
+
+    calculateLoanLocally() {
       const principal = this.loanAmount
       const monthlyRate = this.selectedProduct.interest_rate / 100
       const months = this.loanPeriod
 
-      // Calculate monthly installment using reducing balance method
-      // M = P * [r(1+r)^n] / [(1+r)^n - 1]
       let monthlyInstallment
       if (monthlyRate === 0) {
         monthlyInstallment = principal / months
@@ -526,15 +642,10 @@ export default {
         productName: this.selectedProduct.name,
       }
 
-      // Generate repayment schedule
-      this.generateRepaymentSchedule(principal, monthlyRate, months, monthlyInstallment)
-    },
-
-    generateRepaymentSchedule(principal, monthlyRate, months, monthlyInstallment) {
       const schedule = []
       let balance = principal
       const startDate = new Date()
-      startDate.setDate(1) // Start from 1st of next month
+      startDate.setDate(1)
       startDate.setMonth(startDate.getMonth() + 1)
 
       for (let i = 1; i <= months; i++) {
@@ -544,16 +655,10 @@ export default {
         const openingBalance = balance
         const interest = balance * monthlyRate
         let principalPayment = monthlyInstallment - interest
-
-        // Last installment adjustment for rounding
-        if (i === months) {
-          principalPayment = balance
-        }
+        if (i === months) principalPayment = balance
 
         const closingBalance = Math.max(0, balance - principalPayment)
-        const actualInstallment = i === months
-          ? principalPayment + interest
-          : monthlyInstallment
+        const actualInstallment = i === months ? principalPayment + interest : monthlyInstallment
 
         schedule.push({
           installmentNumber: i,
@@ -566,10 +671,8 @@ export default {
           isFirst: i === 1,
           isLast: i === months,
         })
-
         balance = closingBalance
       }
-
       this.repaymentSchedule = schedule
     },
 
@@ -581,6 +684,8 @@ export default {
       this.repaymentSchedule = []
       this.amountError = null
       this.periodError = null
+      this.scheduleError = null
+      this.calculatingSchedule = false
     },
 
     // Formatting helpers
@@ -1343,6 +1448,31 @@ export default {
   width: 16px;
   height: 16px;
   animation: spin 1s linear infinite;
+}
+
+.btn-spinner {
+  flex-shrink: 0;
+}
+
+/* Schedule Error Banner */
+.schedule-error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px 16px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 10px;
+  color: #fca5a5;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.schedule-error-banner svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: #f87171;
 }
 
 @keyframes spin {

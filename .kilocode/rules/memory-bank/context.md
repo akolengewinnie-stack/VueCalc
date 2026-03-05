@@ -2,7 +2,7 @@
 
 ## Current State
 
-**Template Status**: ✅ Ready for development
+**Template Status**: ✅ Ready for development — Loan Calculator app active in `loan-calculator/`
 
 The template is a clean Next.js 16 starter with TypeScript and Tailwind CSS 4. It's ready for AI-assisted expansion to build any type of application.
 
@@ -87,3 +87,4 @@ export async function GET() {
 | Initial | Template created with base setup |
 | 2026-03-05 | Added Vue.js loan calculator app in loan-calculator/ directory |
 | 2026-03-05 | Added login page to loan calculator using PesaPal API (https://mwdev.pesapal.credit/api/merchant/login); Login.vue created, App.vue updated with auth state, logout button, and session storage |
+| 2026-03-05 | Integrated loan_schedule API (https://mwdev.pesapal.credit/api/merchant/loans/loan_schedule) into calculateLoan(); added loading spinner, error banner, and local fallback calculation |

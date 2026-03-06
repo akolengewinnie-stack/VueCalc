@@ -2,7 +2,7 @@
   <!-- Show Login if not authenticated -->
   <Login v-if="!isAuthenticated" @login-success="onLoginSuccess" />
 
-  <!-- Show Calculator if authenticated -->
+  <!-- Show App if authenticated -->
   <div v-else class="app-container">
     <!-- Header -->
     <header class="app-header">
@@ -14,7 +14,7 @@
         </div>
         <div class="header-text">
           <h1 class="header-title">Loan Calculator</h1>
-          <p class="header-subtitle">Calculate your loan repayment schedule</p>
+          <p class="header-subtitle">PesaPal Credit Portal</p>
         </div>
         <!-- User info + Logout -->
         <div class="header-user">
@@ -34,8 +34,75 @@
       </div>
     </header>
 
+    <!-- Navigation Tabs -->
+    <nav class="app-nav">
+      <button
+        class="nav-tab"
+        :class="{ active: activeTab === 'calculator' }"
+        @click="activeTab = 'calculator'"
+        type="button"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+          <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/>
+        </svg>
+        Loan Calculator
+      </button>
+      <button
+        class="nav-tab"
+        :class="{ active: activeTab === 'history' }"
+        @click="activeTab = 'history'"
+        type="button"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+          <path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/>
+        </svg>
+        Loan History
+      </button>
+    </nav>
+
     <!-- Main Content -->
     <main class="main-content">
+      <!-- Loan History View -->
+      <template v-if="activeTab === 'history'">
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">
+              <span class="step-badge info">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
+                  <path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/>
+                </svg>
+              </span>
+              Loan History
+            </h2>
+            <div class="card-header-actions">
+              <div class="external-id-lookup">
+                <input
+                  v-model="historyExternalId"
+                  type="text"
+                  class="form-input lookup-input"
+                  placeholder="Enter External ID (optional)"
+                />
+                <button
+                  class="btn btn-primary btn-sm"
+                  @click="triggerHistoryLookup"
+                  type="button"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
+                    <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+                  </svg>
+                  Lookup
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="card-body no-padding">
+            <LoanHistory :external-id="activeExternalId" ref="loanHistoryRef" />
+          </div>
+        </div>
+      </template>
+
+      <!-- Calculator View -->
+      <template v-else>
       <!-- Calculator Form Card -->
       <div class="card">
         <div class="card-header">
@@ -340,6 +407,8 @@
           </div>
         </div>
       </transition>
+      </template>
+      <!-- End Calculator View -->
     </main>
 
     <!-- Footer -->
@@ -352,15 +421,23 @@
 <script>
 import axios from 'axios'
 import Login from './Login.vue'
+import LoanHistory from './LoanHistory.vue'
 
 export default {
   name: 'App',
-  components: { Login },
+  components: { Login, LoanHistory },
   data() {
     return {
       // Auth state
       isAuthenticated: !!sessionStorage.getItem('auth_token'),
       authUser: JSON.parse(sessionStorage.getItem('auth_user') || 'null'),
+
+      // Navigation
+      activeTab: 'calculator',
+
+      // Loan History lookup
+      historyExternalId: '',
+      activeExternalId: '',
 
       // Form fields
       selectedProduct: '',
@@ -413,6 +490,14 @@ export default {
       this.isAuthenticated = true
       this.authUser = user
       this.fetchLoanProducts()
+    },
+
+    triggerHistoryLookup() {
+      this.activeExternalId = this.historyExternalId.trim()
+      if (this.$refs.loanHistoryRef) {
+        this.$refs.loanHistoryRef.lookupId = this.activeExternalId
+        this.$refs.loanHistoryRef.fetchHistory()
+      }
     },
 
     handleLogout() {
@@ -826,6 +911,59 @@ export default {
   margin-top: 2px;
 }
 
+/* Navigation Tabs */
+.app-nav {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  background: rgba(255, 255, 255, 0.15);
+  padding: 6px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  width: fit-content;
+}
+
+.nav-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.75);
+  transition: all 0.2s;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.nav-tab:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+}
+
+.nav-tab.active {
+  background: white;
+  color: var(--primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* External ID Lookup */
+.external-id-lookup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lookup-input {
+  width: 220px;
+  font-size: 13px;
+  padding: 7px 12px;
+}
+
 /* Main Content */
 .main-content {
   display: flex;
@@ -1133,6 +1271,11 @@ export default {
 .btn-lg {
   padding: 12px 28px;
   font-size: 15px;
+}
+
+.btn-sm {
+  padding: 7px 14px;
+  font-size: 13px;
 }
 
 .btn-primary {

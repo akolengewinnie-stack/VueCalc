@@ -14,6 +14,9 @@ The template is a clean Next.js 16 starter with TypeScript and Tailwind CSS 4. I
 - [x] ESLint configuration
 - [x] Memory bank documentation
 - [x] Recipe system for common features
+- [x] LoanHistory.vue DataTable component with search, filter, sort, pagination, detail modal
+- [x] Navigation tabs in App.vue (Loan Calculator / Loan History)
+- [x] External ID lookup input on Loan History tab
 
 ## Current Structure
 
@@ -88,3 +91,4 @@ export async function GET() {
 | 2026-03-05 | Added Vue.js loan calculator app in loan-calculator/ directory |
 | 2026-03-05 | Added login page to loan calculator using PesaPal API (https://mwdev.pesapal.credit/api/merchant/login); Login.vue created, App.vue updated with auth state, logout button, and session storage |
 | 2026-03-05 | Integrated loan_schedule API (https://mwdev.pesapal.credit/api/merchant/loans/loan_schedule) into calculateLoan(); added loading spinner, error banner, and local fallback calculation |
+| 2026-03-06 | Created LoanHistory.vue DataTable component (search, filter, sort, pagination, detail modal) using https://mwdev.pesapal.credit/api/merchant/loans/requests/:externalId; added navigation tabs (Loan Calculator / Loan History) to App.vue with External ID lookup |

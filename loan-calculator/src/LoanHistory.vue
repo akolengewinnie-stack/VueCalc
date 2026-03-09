@@ -1,5 +1,40 @@
 <template>
   <div class="loan-history">
+      <!-- Profile Section -->
+      <div v-if="profile" class="profile-banner">
+        <div class="profile-info">
+          <div class="profile-avatar">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
+              <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+            </svg>
+          </div>
+          <div class="profile-details">
+            <span class="profile-name">{{ profile.name || profile.business_name || profile.merchant_name || 'Merchant' }}</span>
+            <span class="profile-id">ID: {{ profile.id || profile.merchant_id || '—' }}</span>
+          </div>
+        </div>
+        <div class="profile-meta">
+          <div class="meta-item" v-if="profile.email">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
+              <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+            </svg>
+            <span>{{ profile.email }}</span>
+          </div>
+          <div class="meta-item" v-if="profile.phone || profile.phone_number">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
+              <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+            </svg>
+            <span>{{ profile.phone || profile.phone_number }}</span>
+          </div>
+        </div>
+      </div>
+      <div v-else-if="loadingProfile" class="profile-banner profile-loading">
+        <div class="skeleton-profile"></div>
+      </div>
+      <div v-else-if="profileError" class="profile-error">
+        {{ profileError }}
+      </div>
+
     <!-- Search / Filter Bar -->
     <div class="history-toolbar">
       <div class="toolbar-left">
@@ -259,6 +294,11 @@ export default {
   },
   data() {
     return {
+      // Profile data
+      profile: null,
+      loadingProfile: false,
+      profileError: null,
+
       loanRequests: [],
       loading: false,
       error: null,
@@ -401,9 +441,49 @@ export default {
     },
   },
   mounted() {
+    this.fetchProfile()
     this.fetchHistory()
   },
   methods: {
+    async fetchProfile() {
+      this.loadingProfile = true
+      this.profileError = null
+
+      try {
+        const token = sessionStorage.getItem('auth_token')
+        const headers = { 'Accept': 'application/json' }
+        if (token && token !== 'session') {
+          headers['Authorization'] = `Bearer ${token}`
+        }
+
+        const response = await axios.get('https://mwdev.pesapal.credit/api/merchant/profile', {
+          timeout: 15000,
+          headers,
+        })
+
+        this.profile = response.data
+      } catch (err) {
+        console.error('Profile fetch error:', err)
+        if (err.response) {
+          const status = err.response.status
+          const msg = err.response.data?.message || err.response.data?.error || null
+          if (status === 401 || status === 403) {
+            this.profileError = 'Session expired. Please log out and log in again.'
+          } else if (status === 404) {
+            this.profileError = 'Profile not found.'
+          } else {
+            this.profileError = msg || `Server error (${status}).`
+          }
+        } else if (err.code === 'ECONNABORTED') {
+          this.profileError = 'Request timed out. Please check your connection.'
+        } else {
+          this.profileError = 'Unable to load profile.'
+        }
+      } finally {
+        this.loadingProfile = false
+      }
+    },
+
     async fetchHistory() {
       this.loading = true
       this.error = null
@@ -553,6 +633,81 @@ export default {
 }
 
 /* Toolbar */
+.profile-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  color: white;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.profile-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.profile-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profile-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.profile-name {
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.profile-id {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.profile-meta {
+  display: flex;
+  gap: 20px;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.profile-loading {
+  min-height: 80px;
+}
+
+.skeleton-profile {
+  height: 48px;
+  width: 200px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.profile-error {
+  padding: 12px 20px;
+  background: var(--danger-light);
+  color: var(--danger);
+  font-size: 13px;
+  border-radius: var(--radius);
+  margin: 12px 20px;
+}
+
 .history-toolbar {
   display: flex;
   align-items: center;
